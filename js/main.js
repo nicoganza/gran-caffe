@@ -104,15 +104,40 @@
   var results = document.querySelector("[data-menu-results]");
   var note = document.querySelector("[data-menu-note]");
   var index = []; // { el, text, nameEl, detailEl, item }
+  var current = null; // sottopagina del menu attualmente aperta
+  var baseTitle = document.title;
+
+  function sectionById(id) {
+    for (var i = 0; i < data.sections.length; i++) {
+      if (data.sections[i].id === id) return data.sections[i];
+    }
+    return null;
+  }
+
+  function idFromHash() {
+    var id = decodeURIComponent(location.hash.slice(1));
+    return sectionById(id) ? id : data.sections[0].id;
+  }
+
+  function pagerLink(sec, dir) {
+    if (!sec) return "<span></span>";
+    return '<a class="menu-pager__' + dir + '" href="#' + sec.id + '" data-go="' + sec.id + '">' +
+      "<small>" + (dir === "prev" ? "Sezione precedente" : "Sezione successiva") + "</small>" +
+      '<span class="menu-pager__title">' +
+      (dir === "prev" ? '<svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg>' : "") +
+      escapeHtml(sec.title) +
+      (dir === "next" ? '<svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg>' : "") +
+      "</span></a>";
+  }
 
   function renderMenu() {
     if (!data || !body) return;
     var html = "";
     var tabsHtml = "";
-    data.sections.forEach(function (sec) {
-      tabsHtml += '<a href="#' + sec.id + '" data-tab="' + sec.id + '">' + escapeHtml(sec.title) + "</a>";
-      html += '<section class="menu-section" id="' + sec.id + '" aria-labelledby="mh-' + sec.id + '">';
-      html += '<h2 id="mh-' + sec.id + '">' + escapeHtml(sec.title) + "</h2>";
+    data.sections.forEach(function (sec, si) {
+      tabsHtml += '<a href="#' + sec.id + '" data-tab="' + sec.id + '" data-go="' + sec.id + '">' + escapeHtml(sec.title) + "</a>";
+      html += '<section class="menu-section" data-section="' + sec.id + '" aria-labelledby="mh-' + sec.id + '">';
+      html += '<h2 id="mh-' + sec.id + '" tabindex="-1">' + escapeHtml(sec.title) + "</h2>";
       html += '<div class="menu-groups">';
       sec.groups.forEach(function (g) {
         html += '<div class="menu-group">';
@@ -131,7 +156,10 @@
         if (g.note) html += '<p class="menu-group__note">' + escapeHtml(g.note) + "</p>";
         html += "</div>";
       });
-      html += "</div></section>";
+      html += "</div>";
+      html += '<nav class="menu-pager" aria-label="Altre sezioni del menu">' +
+        pagerLink(data.sections[si - 1], "prev") + pagerLink(data.sections[si + 1], "next") + "</nav>";
+      html += "</section>";
     });
     body.innerHTML = html;
     tabs.innerHTML = tabsHtml;
@@ -170,12 +198,16 @@
     body.querySelectorAll(".menu-group").forEach(function (g) {
       g.hidden = !g.querySelector(".menu-item:not([hidden])");
     });
+    // senza ricerca si vede solo la sottopagina corrente; con la ricerca, i risultati di tutto il menu
+    body.classList.toggle("is-searching", !!q);
     body.querySelectorAll(".menu-section").forEach(function (s) {
+      var id = s.getAttribute("data-section");
       var empty = !s.querySelector(".menu-item:not([hidden])");
-      s.hidden = empty;
-      var tab = tabs.querySelector('[data-tab="' + s.id + '"]');
-      if (tab) tab.classList.toggle("is-empty", empty);
+      s.hidden = q ? empty : id !== current;
+      var tab = tabs.querySelector('[data-tab="' + id + '"]');
+      if (tab) tab.classList.toggle("is-empty", !!q && empty);
     });
+    setCurrent(tabs, "data-tab", q ? "" : current);
 
     if (!q) {
       results.textContent = "";
@@ -215,18 +247,64 @@
     });
   }
 
-  /* ---------- Scrollspy ---------- */
+  /* ---------- Sottopagine del menu ---------- */
+
+  // porta l'inizio del menu appena sotto l'intestazione, se l'utente è già sceso oltre
+  function scrollToMenuStart(force) {
+    var header = document.querySelector("[data-header]");
+    var menuEl = document.querySelector(".menu");
+    var top = menuEl.getBoundingClientRect().top + window.scrollY - header.getBoundingClientRect().height;
+    // cambio di sottopagina: salto immediato, come un cambio pagina (lo scroll fluido del sito qui disorienta)
+    if (force || window.scrollY > top) window.scrollTo({ top: top, behavior: "instant" });
+  }
+
+  function centerTab() {
+    var cur = tabs.querySelector("[aria-current]");
+    if (cur) tabs.scrollTo({ left: cur.offsetLeft - tabs.clientWidth / 2 + cur.clientWidth / 2 });
+  }
+
+  function showSection(id, opts) {
+    opts = opts || {};
+    current = id;
+    if (opts.push) history.pushState(null, "", "#" + id);
+    if (search.value) {
+      search.value = "";
+    }
+    applySearch();
+    document.title = sectionById(id).title + " · " + baseTitle;
+    centerTab();
+    if (opts.scroll !== false) scrollToMenuStart(opts.forceScroll);
+    if (opts.focus) {
+      var h = body.querySelector('[data-section="' + id + '"] h2');
+      if (h) h.focus({ preventScroll: true });
+    }
+  }
+
+  function setupSubpages() {
+    document.querySelector(".menu").addEventListener("click", function (e) {
+      var a = e.target.closest("[data-go]");
+      if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+      e.preventDefault();
+      var id = a.getAttribute("data-go");
+      if (id === current && !search.value) { scrollToMenuStart(); return; }
+      showSection(id, { push: true, focus: !a.hasAttribute("data-tab") });
+    });
+    window.addEventListener("popstate", function () {
+      showSection(idFromHash());
+    });
+  }
+
+  /* ---------- Intestazione e navigazione ---------- */
 
   function setCurrent(container, attr, id) {
     container.querySelectorAll("a").forEach(function (a) {
       var on = a.getAttribute(attr) === id;
-      if (on) a.setAttribute("aria-current", "true");
+      if (on) a.setAttribute("aria-current", container === tabs ? "page" : "true");
       else a.removeAttribute("aria-current");
     });
   }
 
   function setupSpy() {
-    var sections = body ? Array.prototype.slice.call(body.querySelectorAll(".menu-section")) : [];
     var header = document.querySelector("[data-header]");
     var fixedSolid = header.hasAttribute("data-header-solid");
     var bar = document.querySelector("[data-menu-bar]");
@@ -239,21 +317,6 @@
     function update() {
       ticking = false;
       var line = window.innerHeight * 0.32;
-      var activeSec = null;
-      sections.forEach(function (s) {
-        if (!s.hidden && s.getBoundingClientRect().top <= line) activeSec = s;
-      });
-      if (!activeSec && sections.length) activeSec = sections.filter(function (s) { return !s.hidden; })[0];
-      if (activeSec && tabs) {
-        var id = activeSec.id;
-        var prev = tabs.querySelector('[aria-current="true"]');
-        setCurrent(tabs, "data-tab", id);
-        var cur = tabs.querySelector('[aria-current="true"]');
-        if (cur && cur !== prev) {
-          tabs.scrollTo({ left: cur.offsetLeft - tabs.clientWidth / 2 + cur.clientWidth / 2, behavior: "smooth" });
-        }
-      }
-
       var activePage = null;
       pageSections.forEach(function (s) {
         if (s.getBoundingClientRect().top <= line) activePage = s;
@@ -295,14 +358,13 @@
 
   renderStatus();
   setInterval(renderStatus, 60 * 1000);
-  if (body) {
+  if (body && data) {
     renderMenu();
     setupSearch();
-    // le sezioni del menu esistono solo dopo il rendering: riposiziona l'ancora
-    if (location.hash.length > 1) {
-      var target = document.getElementById(decodeURIComponent(location.hash.slice(1)));
-      if (target) target.scrollIntoView();
-    }
+    setupSubpages();
+    // arrivando da un link a una sezione (es. menu.html#cantina) si apre quella sottopagina
+    var fromLink = location.hash.length > 1;
+    showSection(idFromHash(), { scroll: fromLink, forceScroll: fromLink });
   }
   setupSpy();
   setupMap();

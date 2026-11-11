@@ -402,7 +402,7 @@ a { color: inherit; text-underline-offset: .22em; text-decoration-thickness: 1px
   white-space: nowrap;
 }
 .menu-tabs a:hover { color: var(--text); }
-.menu-tabs a[aria-current="true"] { color: var(--text); border-bottom-color: var(--gold); }
+.menu-tabs a[aria-current] { color: var(--text); border-bottom-color: var(--gold); }
 .menu-tabs a.is-empty { opacity: .35; }
 
 .menu-search {
@@ -456,7 +456,8 @@ a { color: inherit; text-underline-offset: .22em; text-decoration-thickness: 1px
 .menu-section {
   padding-top: clamp(2.5rem, 5vw, 4rem);
 }
-.menu-section + .menu-section {
+/* con la ricerca attiva compaiono più sezioni: separale */
+.is-searching .menu-section:not([hidden]) ~ .menu-section:not([hidden]) {
   margin-top: clamp(1rem, 3vw, 2rem);
   border-top: 1px solid var(--rule);
 }
@@ -465,6 +466,44 @@ a { color: inherit; text-underline-offset: .22em; text-decoration-thickness: 1px
   font-size: clamp(2rem, 3.6vw, 2.9rem);
   margin-bottom: clamp(1.75rem, 3vw, 2.5rem);
 }
+.menu-section > h2:focus { outline: none; }
+
+.menu-pager {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem;
+  margin-top: 1rem;
+  border-top: 1px solid var(--rule);
+}
+.is-searching .menu-pager { display: none; }
+.menu-pager a {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  padding: 1.5rem 0 .5rem;
+  text-decoration: none;
+}
+.menu-pager__next { text-align: right; align-items: flex-end; }
+.menu-pager small {
+  font-size: .78rem;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.menu-pager__title {
+  display: inline-flex;
+  align-items: center;
+  gap: .6rem;
+  font-family: var(--serif);
+  font-size: clamp(1.35rem, 2.4vw, 1.75rem);
+  line-height: 1.2;
+  transition: color .2s ease;
+}
+.menu-pager .icon { flex: none; color: var(--gold-deep); transition: transform .3s var(--ease-out); }
+.menu-pager__prev .icon { transform: scaleX(-1); }
+.menu-pager a:hover .menu-pager__title { color: var(--gold-deep); }
+.menu-pager__next:hover .icon { transform: translateX(4px); }
+.menu-pager__prev:hover .icon { transform: scaleX(-1) translateX(4px); }
 
 .menu-groups {
   columns: 2 26rem;
